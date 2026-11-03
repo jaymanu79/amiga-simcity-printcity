@@ -5,15 +5,16 @@ PrintCity (Maxis, 1989) builds the map from the 8x8 tiles stored in
 SimData2 and sends it to printer.device. This script does the same
 rendering, but saves a full-colour PNG instead of printing.
 
-Two tile sets are available:
-  amiga       8x8 tiles from SimData2 (from your own SimCity disk)
-  micropolis  16x16 tiles from Micropolis, the GPL release of SimCity,
-              bundled in tiles/micropolis/
+The tile file given with --tiles is recognised automatically:
+  - SimData2 from the Amiga SimCity disk (8x8 tiles, 16 colours);
+  - any image holding the 960 tiles, e.g. from Micropolis, the GPL
+    release of SimCity: a grid of square tiles (tiles.png, 16x60 tiles)
+    or a single column (tiles.xpm, tilessm.xpm).
+Without --tiles, the Micropolis tiles bundled in tiles/micropolis/ are used.
 
 Usage:
-    simcity_render.py CITY [CITY ...] --simdata2 SimData2 [-o OUTDIR]
-    simcity_render.py CITY [CITY ...] --tileset micropolis [-o OUTDIR]
-    simcity_render.py --tileset micropolis --sheet tiles.png
+    simcity_render.py CITY [CITY ...] [--tiles FILE] [-o OUTDIR] [--scale N]
+    simcity_render.py --tiles FILE --sheet tiles.png
 """
 import argparse
 import os
@@ -24,6 +25,7 @@ from PIL import Image
 
 MAP_W, MAP_H = 120, 100
 MAP_BYTES = MAP_W * MAP_H * 2
+NTILES = 960
 MICROPOLIS_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               'tiles', 'micropolis', 'tiles.png')
 
@@ -50,13 +52,59 @@ def load_amiga_tiles(path):
     return tiles
 
 
-def load_micropolis_tiles(path):
-    """Micropolis tiles.png: 16 columns x 60 rows of 16x16 tiles,
-    tile n at column n % 16, row n // 16 (same numbering as SimCity)."""
-    sheet = Image.open(path).convert('RGB')
-    size = sheet.width // 16
-    return [sheet.crop((n % 16 * size, n // 16 * size, n % 16 * size + size, n // 16 * size + size))
-            for n in range(16 * (sheet.height // size))]
+def read_xpm(path):
+    """Minimal XPM reader. Pillow misreads 16-bit-per-channel colours
+    (#RRRRGGGGBBBB, as in the Micropolis .xpm files)."""
+    import re
+    rows = re.findall(r'"((?:[^"\\]|\\.)*)"', open(path, encoding='latin1').read())
+    w, h, ncol, cpp = map(int, rows[0].split()[:4])
+    colours = {}
+    for line in rows[1:1 + ncol]:
+        key, spec = line[:cpp], line[cpp:].split()
+        val = spec[spec.index('c') + 1] if 'c' in spec else spec[-1]
+        if val.startswith('#'):
+            hx = val[1:]
+            n = len(hx) // 3
+            colours[key] = tuple(int(hx[i * n:(i + 1) * n], 16) * 255 // (16 ** n - 1) for i in range(3))
+        else:
+            colours[key] = (0, 0, 0) if val.lower() == 'none' else Image.new('RGB', (1, 1), val).getpixel((0, 0))
+    img = Image.new('RGB', (w, h))
+    img.putdata([colours[r[x:x + cpp]] for r in rows[1 + ncol:1 + ncol + h] for x in range(0, w * cpp, cpp)])
+    return img
+
+
+def load_image_tiles(path):
+    """Image holding the 960 tiles, in SimCity order: either a grid of
+    square tiles read row by row (Micropolis tiles.png: 16 columns of
+    16x16), or a single column of square tiles (tiles.xpm 16x16, tilessm.xpm 3x3)."""
+    try:
+        sheet = read_xpm(path) if open(path, 'rb').read(9) == b'/* XPM */' else Image.open(path)
+        sheet = sheet.convert('RGB')
+    except Exception:
+        sys.exit(f'{path}: neither a SimData2 file nor a readable image')
+    w, h = sheet.size
+    size = round((w * h / NTILES) ** 0.5)
+    if size and w % size == 0 and h % size == 0 and (w // size) * (h // size) == NTILES:
+        tw = th = size
+    elif h % NTILES == 0 and h // NTILES <= w:
+        # single column; tiles are square, extra columns are padding
+        # (tilessm.xpm: 3x3 tiles in a 4-pixel wide strip)
+        tw = th = h // NTILES
+    else:
+        sys.exit(f'{path}: {w}x{h} image, cannot find {NTILES} tiles in it '
+                 '(expected a grid of square tiles or a single column)')
+    cols = w // tw
+    return [sheet.crop((n % cols * tw, n // cols * th, n % cols * tw + tw, n // cols * th + th))
+            for n in range(NTILES)]
+
+
+def load_tiles(path):
+    """Pick the loader from the file content."""
+    with open(path, 'rb') as f:
+        magic = f.read(2)
+    if magic == b'\xd5\xdb':
+        return 'SimData2', load_amiga_tiles(path)
+    return 'image', load_image_tiles(path)
 
 
 def load_city(path):
@@ -79,46 +127,41 @@ def load_city(path):
 
 
 def render(tiles, cmap, scale=1):
-    t = tiles[0].width
-    missing = Image.new('RGB', (t, t), (255, 0, 255))
-    out = Image.new('RGB', (MAP_W * t, MAP_H * t))
+    tw, th = tiles[0].size
+    missing = Image.new('RGB', (tw, th), (255, 0, 255))
+    out = Image.new('RGB', (MAP_W * tw, MAP_H * th))
     for x in range(MAP_W):
         for y in range(MAP_H):
             v = cmap[x * MAP_H + y] & 0x3ff
-            out.paste(tiles[v] if v < len(tiles) else missing, (x * t, y * t))
+            out.paste(tiles[v] if v < len(tiles) else missing, (x * tw, y * th))
     if scale != 1:
         out = out.resize((out.width * scale, out.height * scale), Image.NEAREST)
     return out
 
 
 def tile_sheet(tiles, cols=32):
-    t = tiles[0].width
+    tw, th = tiles[0].size
     rows = (len(tiles) + cols - 1) // cols
-    sheet = Image.new('RGB', (cols * t, rows * t))
+    sheet = Image.new('RGB', (cols * tw, rows * th))
     for i, im in enumerate(tiles):
-        sheet.paste(im, (i % cols * t, i // cols * t))
+        sheet.paste(im, (i % cols * tw, i // cols * th))
     return sheet
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('cities', nargs='*', help='city files to render')
-    ap.add_argument('-t', '--tileset', choices=('amiga', 'micropolis'), default='amiga',
-                    help='tile set (default: amiga)')
-    ap.add_argument('--simdata2', metavar='FILE', help='SimData2 file (needed for --tileset amiga)')
-    ap.add_argument('--micropolis-png', metavar='FILE', default=MICROPOLIS_PNG,
-                    help='Micropolis tiles.png (default: the bundled copy)')
+    ap.add_argument('-t', '--tiles', '--simdata2', metavar='FILE', default=MICROPOLIS_PNG,
+                    help='SimData2 or tile image, detected automatically '
+                         '(default: the bundled Micropolis tiles)')
     ap.add_argument('-o', '--outdir', default='.', help='output directory (default: .)')
     ap.add_argument('--scale', type=int, default=1, help='integer zoom factor')
     ap.add_argument('--sheet', metavar='PNG', help='also save a sheet of all tiles')
     a = ap.parse_args()
 
-    if a.tileset == 'amiga':
-        if not a.simdata2:
-            ap.error('--tileset amiga needs --simdata2 (or use --tileset micropolis)')
-        tiles = load_amiga_tiles(a.simdata2)
-    else:
-        tiles = load_micropolis_tiles(a.micropolis_png)
+    kind, tiles = load_tiles(a.tiles)
+    tw, th = tiles[0].size
+    print(f'tiles: {a.tiles} ({kind}, {len(tiles)} tiles of {tw}x{th})')
     if not a.cities and not a.sheet:
         ap.error('nothing to do: give city files and/or --sheet')
 

@@ -6,26 +6,14 @@ et dans un fichier au lieu de l'imprimante.
 
 ![giltown](docs/giltown.png)
 
-## Deux jeux de tuiles
-
-| `--tileset` | Tuiles | Image d'une ville | Source |
-|---|---|---|---|
-| `amiga` (défaut) | 8 × 8, 16 couleurs | 960 × 800 | `SimData2` de ta disquette SimCity, non fourni (© Maxis) |
-| `micropolis` | 16 × 16 | 1920 × 1600 | [Micropolis](https://github.com/SimHacker/micropolis), la version GPL de SimCity, fourni dans `tiles/micropolis/` |
-
-Les deux jeux utilisent la même numérotation des tuiles : une ville Amiga
-se rend telle quelle avec les tuiles Micropolis, sans avoir la disquette.
-
-![giltown avec les tuiles Micropolis](docs/giltown_micropolis.png)
-
 ## Utilisation
 
 ```sh
 pip install pillow
-python3 simcity_render.py giltown "San Francisco" --simdata2 SimData2 -o cartes/
-python3 simcity_render.py giltown "San Francisco" -t micropolis -o cartes/
-python3 simcity_render.py giltown --simdata2 SimData2 --scale 2 -o cartes/
-python3 simcity_render.py -t micropolis --sheet tuiles.png    # planche des tuiles
+python3 simcity_render.py giltown "San Francisco" -o cartes/                 # tuiles Micropolis fournies
+python3 simcity_render.py giltown "San Francisco" -t SimData2 -o cartes/     # tuiles Amiga
+python3 simcity_render.py giltown -t tiles.xpm --scale 2 -o cartes/          # autre planche
+python3 simcity_render.py -t SimData2 --sheet tuiles.png                     # planche des tuiles
 ```
 
 Les villes sont les fichiers de sauvegarde du jeu et les scénarios du
@@ -34,12 +22,33 @@ dossier `Scenarios/` de la disquette. Les fichiers `.cty` de Micropolis
 
 Options :
 
-- `-t`, `--tileset amiga|micropolis` : jeu de tuiles (défaut `amiga`) ;
-- `--simdata2 FICHIER` : le fichier `SimData2`, obligatoire avec `amiga` ;
-- `--micropolis-png FICHIER` : un autre `tiles.png` Micropolis que celui fourni ;
+- `-t`, `--tiles FICHIER` : fichier de tuiles, format détecté tout seul
+  (par défaut les tuiles Micropolis de `tiles/micropolis/`) ;
 - `-o DOSSIER` : dossier de sortie ;
 - `--scale N` : agrandissement entier ;
 - `--sheet PNG` : enregistre aussi la planche de toutes les tuiles.
+
+## Fichiers de tuiles acceptés
+
+Le format est reconnu au contenu du fichier :
+
+| Fichier | Reconnu par | Tuiles | Image d'une ville |
+|---|---|---|---|
+| `SimData2` de la disquette Amiga (non fourni, © Maxis) | signature `D5 DB` | 8 × 8, 16 couleurs | 960 × 800 |
+| Une image contenant les 960 tuiles en grille, lues ligne par ligne : `tiles.png` de Micropolis (16 × 60 tuiles), fourni | tuiles carrées qui tombent juste | 16 × 16 | 1920 × 1600 |
+| Une image en une seule colonne : `tiles.xpm`, `tilesbw.xpm` (noir et blanc), `tilessm.xpm` de Micropolis | hauteur multiple de 960 | 16 × 16, ou 3 × 3 pour `tilessm` | 1920 × 1600, ou 360 × 300 |
+
+Toute image que Pillow sait ouvrir convient (PNG, GIF, BMP…). Les `.xpm` de
+Micropolis sont lus par le script lui-même, parce que Pillow décode mal leurs
+couleurs sur 16 bits par composante. Dans une colonne, les tuiles sont
+supposées carrées : la colonne de bourrage de `tilessm.xpm` (4 pixels de
+large pour des tuiles de 3) est ignorée.
+
+Les tuiles Micropolis viennent de [Micropolis](https://github.com/SimHacker/micropolis),
+la version de SimCity publiée sous GPL. Elles ont la même numérotation que
+celles de SimCity : une ville Amiga se rend telle quelle avec, sans la disquette.
+
+![giltown avec les tuiles Micropolis](docs/giltown_micropolis.png)
 
 ## Licences
 
