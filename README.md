@@ -6,20 +6,46 @@ et dans un fichier au lieu de l'imprimante.
 
 ![giltown](docs/giltown.png)
 
+## Deux jeux de tuiles
+
+| `--tileset` | Tuiles | Image d'une ville | Source |
+|---|---|---|---|
+| `amiga` (défaut) | 8 × 8, 16 couleurs | 960 × 800 | `SimData2` de ta disquette SimCity, non fourni (© Maxis) |
+| `micropolis` | 16 × 16 | 1920 × 1600 | [Micropolis](https://github.com/SimHacker/micropolis), la version GPL de SimCity, fourni dans `tiles/micropolis/` |
+
+Les deux jeux utilisent la même numérotation des tuiles : une ville Amiga
+se rend telle quelle avec les tuiles Micropolis, sans avoir la disquette.
+
+![giltown avec les tuiles Micropolis](docs/giltown_micropolis.png)
+
 ## Utilisation
 
 ```sh
 pip install pillow
-python3 simcity_render.py SimData2 giltown "San Francisco" -o cartes/
-python3 simcity_render.py SimData2 giltown --scale 2 -o cartes/
-python3 simcity_render.py SimData2 --tiles tuiles.png     # planche des tuiles
+python3 simcity_render.py giltown "San Francisco" --simdata2 SimData2 -o cartes/
+python3 simcity_render.py giltown "San Francisco" -t micropolis -o cartes/
+python3 simcity_render.py giltown --simdata2 SimData2 --scale 2 -o cartes/
+python3 simcity_render.py -t micropolis --sheet tuiles.png    # planche des tuiles
 ```
 
-`SimData2` vient de la disquette de SimCity : il n'est pas fourni ici
-(données © Maxis). Les villes sont les fichiers de sauvegarde du jeu et
-les scénarios du dossier `Scenarios/`.
+Les villes sont les fichiers de sauvegarde du jeu et les scénarios du
+dossier `Scenarios/` de la disquette. Les fichiers `.cty` de Micropolis
+(sans en-tête MacBinary) sont acceptés aussi.
 
-Chaque ville donne une image de 960 × 800 pixels (120 × 100 tuiles de 8 × 8).
+Options :
+
+- `-t`, `--tileset amiga|micropolis` : jeu de tuiles (défaut `amiga`) ;
+- `--simdata2 FICHIER` : le fichier `SimData2`, obligatoire avec `amiga` ;
+- `--micropolis-png FICHIER` : un autre `tiles.png` Micropolis que celui fourni ;
+- `-o DOSSIER` : dossier de sortie ;
+- `--scale N` : agrandissement entier ;
+- `--sheet PNG` : enregistre aussi la planche de toutes les tuiles.
+
+## Licences
+
+Les tuiles Micropolis (`tiles/micropolis/tiles.png`) sont sous GNU GPL v3
+avec les conditions additionnelles d'Electronic Arts : voir
+`tiles/micropolis/NOTICE.txt` et `tiles/micropolis/COPYING`.
 
 ## Comment fonctionne PrintCity
 
